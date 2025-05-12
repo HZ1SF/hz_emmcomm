@@ -63,7 +63,7 @@
     <button onclick="addRow()">+ صف جديد</button>
     <button onclick="plot()">أضف الى الخريطة</button>
     <button onclick="exportCSV()">CSV صدر</button>
-    <button onclick="exportPDF()">تصدير إلى PDF</button><br>
+    <!-- <button onclick="exportPDF()">تصدير إلى PDF</button> --><br>
     <input type="file" id="csvFile" accept=".csv" onchange="importCSV(event)">
   </div>
   <div id="map"></div>
@@ -166,7 +166,7 @@
       a.click();
       document.body.removeChild(a);
     }
-
+/*
     function exportPDF() {
       const now = new Date();
       const pad = n => String(n).padStart(2, '0');
@@ -197,7 +197,7 @@
         pdf.save(filename);
       });
     }
-
+*/
     function importCSV(event) {
       const file = event.target.files[0];
       if (!file) return;
