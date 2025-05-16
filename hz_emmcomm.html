@@ -1,45 +1,80 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>HZ EMCOMM Locator - Smart Tooltip Placement</title>
+  <title>HZ EMCOMM Locator - v0.2.3</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Leaflet CSS for map styling -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
   <style>
+    /* Basic reset and font */
     html, body {
       margin: 0;
       padding: 0;
       font-family: sans-serif;
     }
+
+    /* Control panel styles */
     #controls {
       padding: 10px;
       background: #f8f8f8;
     }
+
+    /* Table layout for input entries */
     table {
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 10px;
     }
+
     th, td {
       padding: 8px;
       border: 1px solid #ccc;
     }
-    input[type="text"] {
+
+    /* Text input and color picker */
+    input[type="text"], input[type="color"] {
       width: 100%;
       box-sizing: border-box;
       font-size: 1rem;
     }
+
+    input[type="color"] {
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    /* Button and file input styling */
     button, input[type="file"] {
       padding: 8px 12px;
       margin: 4px 0;
       font-size: 1rem;
     }
+
+    /* Map container height */
     #map {
-      height: calc(100vh - 360px);
+      height: calc(100vh - 420px);
     }
+
+    /* Footer styling */
+    footer {
+      text-align:center;
+      font-size: 0.8rem;
+      padding: 10px;
+      background: #f0f0f0;
+      color: #555;
+    }
+
+    /* Responsive tweaks for mobile */
     @media (max-width: 600px) {
       #map {
-        height: calc(100vh - 420px);
+        height: calc(100vh - 480px);
       }
       button, input[type="file"] {
         width: 100%;
@@ -48,7 +83,11 @@
   </style>
 </head>
 <body>
+
+  <!-- Page title in Arabic -->
   <h1 style="text-align:center; font-size:1.8rem; margin: 1rem 0;">مخطط الطوارئ</h1>
+
+  <!-- Control panel section -->
   <div id="controls">
     <table id="dataTable">
       <thead>
@@ -60,26 +99,51 @@
       </thead>
       <tbody></tbody>
     </table>
+
+    <!-- Interaction buttons -->
     <button onclick="addRow()">+ صف جديد</button>
     <button onclick="plot()">أضف الى الخريطة</button>
     <button onclick="exportCSV()">CSV صدر</button>
-    <!-- <button onclick="exportPDF()">تصدير إلى PDF</button> --><br>
+    <!-- <button onclick="exportPDF()">تصدير إلى PDF</button> -->
+
+    <!-- File input for importing CSV -->
     <input type="file" id="csvFile" accept=".csv" onchange="importCSV(event)">
+    <br><br>
+
+    <!-- Color picker -->
+    <label for="lineColor">لون الخط:</label>
+    <input type="color" id="lineColor" value="#ff0000">
   </div>
+
+  <!-- Map container -->
   <div id="map"></div>
 
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- Footer with license and version -->
+  <footer>
+    &copy; HZ1SF – Version 0.2.3 – Licensed under the
+    <a href="https://www.gnu.org/licenses/gpl-3.0.en.html" target="_blank" rel="noopener noreferrer">
+      GNU General Public License v3.0
+    </a>.
+  </footer>
 
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <!-- JavaScript Application Logic -->
   <script>
-    const map = L.map('map').setView([20, 0], 2);
+    // Initialize map centered on Saudi Arabia
+    const map = L.map('map').setView([24.5, 44], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    let entries = [];
+    // Internal state
+    let entries = [];          // Plotted station data
+    let connections = [];      // Line connections
+    let plottedLayers = [];    // All Leaflet layers for cleanup
+    let selectedMarker = null; // Marker selected for connection
 
+    // Add a row to the table
     function addRow(name = '', grid = '') {
       const row = document.createElement('tr');
       row.innerHTML = `
@@ -89,16 +153,20 @@
       document.querySelector('#dataTable tbody').appendChild(row);
     }
 
+    // Remove row from the table
     function removeRow(button) {
       const row = button.closest('tr');
-      row.parentElement.removeChild(row);
+      row.remove();
     }
 
+    // Main plot function
     function plot() {
       entries = [];
-      map.eachLayer(layer => {
-        if (layer instanceof L.Marker || layer instanceof L.Rectangle) map.removeLayer(layer);
-      });
+      selectedMarker = null;
+
+      // Clear map
+      plottedLayers.forEach(layer => map.removeLayer(layer));
+      plottedLayers = [];
 
       const existingCenters = [];
 
@@ -110,10 +178,44 @@
 
         try {
           const { center, bounds } = fromMaidenhead(grid);
+
+          // Create marker and popup
           const marker = L.marker(center).addTo(map)
             .bindPopup(`<b>${name}</b><br>QTH: <code>${grid}</code><br>Lat: ${center[0].toFixed(5)}<br>Lon: ${center[1].toFixed(5)}`);
 
-          // Use screen-pixel distance to prevent overlap
+          // Clicking marker enables line drawing
+          marker.on('click', () => {
+            if (!selectedMarker) {
+              selectedMarker = { name, lat: center[0], lon: center[1] };
+              marker.openPopup();
+            } else {
+              if (selectedMarker.name !== name) {
+                const color = document.getElementById('lineColor').value;
+
+                // Draw connection line
+                const line = L.polyline(
+                  [[selectedMarker.lat, selectedMarker.lon], [center[0], center[1]]],
+                  { color, weight: 2 }
+                ).addTo(map);
+                plottedLayers.push(line);
+                connections.push({ from: selectedMarker.name, to: name, color });
+
+                // Bearing label
+                const labelLat = selectedMarker.lat * 0.75 + center[0] * 0.25;
+                const labelLon = selectedMarker.lon * 0.75 + center[1] * 0.25;
+                const bearing = getBearing(selectedMarker.lat, selectedMarker.lon, center[0], center[1]);
+                const tooltip = L.tooltip({
+                  permanent: true,
+                  direction: 'center',
+                  offset: [0, 0]
+                }).setLatLng([labelLat, labelLon]).setContent(`${bearing}°`).addTo(map);
+                plottedLayers.push(tooltip);
+              }
+              selectedMarker = null;
+            }
+          });
+
+          // Adjust tooltip direction if close to another marker
           let minDist = Infinity;
           const currentPoint = map.latLngToLayerPoint(L.latLng(center[0], center[1]));
           for (const other of existingCenters) {
@@ -125,7 +227,6 @@
           }
           existingCenters.push(center);
 
-          // Adjust label direction based on pixel spacing
           let direction = 'right';
           if (minDist < 40) direction = 'top';
           if (minDist < 25) direction = 'left';
@@ -137,15 +238,56 @@
             offset: [10, 0]
           }).openTooltip();
 
-          L.rectangle(bounds, { color: "#3388ff", weight: 1 }).addTo(map);
+          // Draw QTH grid square
+          const rect = L.rectangle(bounds, { color: "#3388ff", weight: 1 }).addTo(map);
+          plottedLayers.push(marker, rect);
           entries.push({ name, grid, lat: center[0], lon: center[1] });
 
         } catch (e) {
           console.error(`Invalid locator "${grid}":`, e);
         }
       }
+
+      drawConnections();
     }
 
+    // Redraw saved connections
+    function drawConnections() {
+      connections.forEach(c => {
+        const from = entries.find(e => e.name === c.from);
+        const to = entries.find(e => e.name === c.to);
+        if (!from || !to) return;
+
+        const line = L.polyline(
+          [[from.lat, from.lon], [to.lat, to.lon]],
+          { color: c.color || "#ff0000", weight: 2 }
+        ).addTo(map);
+        plottedLayers.push(line);
+
+        const labelLat = from.lat * 0.75 + to.lat * 0.25;
+        const labelLon = from.lon * 0.75 + to.lon * 0.25;
+        const bearing = getBearing(from.lat, from.lon, to.lat, to.lon);
+        const tooltip = L.tooltip({
+          permanent: true,
+          direction: 'center',
+          offset: [0, 0]
+        }).setLatLng([labelLat, labelLon]).setContent(`${bearing}°`).addTo(map);
+        plottedLayers.push(tooltip);
+      });
+    }
+
+    // Bearing calculator
+    function getBearing(lat1, lon1, lat2, lon2) {
+      const toRad = deg => deg * Math.PI / 180;
+      const toDeg = rad => rad * 180 / Math.PI;
+      const dLon = toRad(lon2 - lon1);
+      const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+      const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+                Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+      return Math.round((toDeg(Math.atan2(y, x)) + 360) % 360);
+    }
+
+    // CSV Export
     function exportCSV() {
       if (entries.length === 0) {
         alert("No entries to export.");
@@ -154,121 +296,89 @@
       const now = new Date();
       const pad = n => String(n).padStart(2, '0');
       const filename = `${pad(now.getDate())}-${pad(now.getMonth()+1)}-${String(now.getFullYear()).slice(2)}_${pad(now.getHours())}-${pad(now.getMinutes())}.csv`;
+
       const rows = [["Name", "QTH", "Latitude", "Longitude"]];
       entries.forEach(e => rows.push([e.name, e.grid, e.lat, e.lon]));
+      rows.push(["", "", "", ""]);
+      rows.push(["Connections"]);
+      rows.push(["From", "To", "Color"]);
+      connections.forEach(c => rows.push([c.from, c.to, c.color]));
+
       const csv = rows.map(r => r.join(",")).join("\n");
       const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
+      a.href = URL.createObjectURL(blob);
       a.download = filename;
-      document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
     }
-/*
-    function exportPDF() {
-      const now = new Date();
-      const pad = n => String(n).padStart(2, '0');
-      const filename = `${pad(now.getDate())}-${pad(now.getMonth()+1)}-${String(now.getFullYear()).slice(2)}_${pad(now.getHours())}-${pad(now.getMinutes())}.pdf`;
 
-      leafletImage(map, function(err, canvas) {
-        if (err) return console.error('Error rendering map:', err);
-
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jspdf.jsPDF('p', 'pt', 'a4');
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const usableWidth = pageWidth - 40;
-        const imgHeight = (canvas.height * usableWidth) / canvas.width;
-
-        pdf.addImage(imgData, 'PNG', 20, 20, usableWidth, imgHeight);
-
-        let y = 30 + imgHeight + 20;
-        pdf.setFontSize(12);
-        entries.forEach(entry => {
-          if (y > pdf.internal.pageSize.getHeight() - 40) {
-            pdf.addPage();
-            y = 40;
-          }
-          pdf.text(`${entry.name} - ${entry.grid}`, 40, y);
-          y += 20;
-        });
-
-        pdf.save(filename);
-      });
-    }
-*/
+    // CSV Import
     function importCSV(event) {
       const file = event.target.files[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = function (e) {
-        const lines = e.target.result.trim().split('\n').slice(1);
-        const tbody = document.querySelector('#dataTable tbody');
-        tbody.innerHTML = '';
-        lines.forEach(line => {
-          const [name, grid] = line.split(',').map(s => s.trim());
+        const lines = e.target.result.trim().split('\n');
+        document.querySelector('#dataTable tbody').innerHTML = '';
+        entries = [];
+        connections = [];
+        plottedLayers = [];
+        selectedMarker = null;
+
+        let i = 1;
+        while (i < lines.length && !lines[i].toLowerCase().startsWith("connections")) {
+          const [name, grid] = lines[i].split(',').map(s => s.trim());
           if (name && grid) addRow(name, grid);
-        });
+          i++;
+        }
+
+        const connStart = lines.findIndex(line => line.toLowerCase().startsWith("connections"));
+        if (connStart !== -1 && lines[connStart + 1]?.includes("From")) {
+          for (let j = connStart + 2; j < lines.length; j++) {
+            const [from, to, color] = lines[j].split(',').map(s => s.trim());
+            if (from && to && color) {
+              connections.push({ from, to, color });
+            }
+          }
+        }
+
         plot();
       };
       reader.readAsText(file);
     }
 
+    // Convert Maidenhead locator to lat/lon + grid bounds
     function fromMaidenhead(locator) {
-      if (![4, 6, 8].includes(locator.length)) {
-        throw new Error("Locator must be 4, 6, or 8 characters long");
-      }
-      const upper = locator.toUpperCase();
-      let lon = -180;
-      let lat = -90;
-      lon += (upper.charCodeAt(0) - 65) * 20;
-      lat += (upper.charCodeAt(1) - 65) * 10;
+      if (![4, 6, 8].includes(locator.length)) throw new Error("Locator must be 4, 6, or 8 characters long");
+      const u = locator.toUpperCase();
+      let lon = (u.charCodeAt(0) - 65) * 20 - 180;
+      let lat = (u.charCodeAt(1) - 65) * 10 - 90;
       if (locator.length >= 4) {
-        lon += parseInt(upper[2]) * 2;
-        lat += parseInt(upper[3]) * 1;
+        lon += parseInt(u[2]) * 2;
+        lat += parseInt(u[3]);
       }
       if (locator.length >= 6) {
-        lon += (upper.charCodeAt(4) - 65) * (5 / 60);
-        lat += (upper.charCodeAt(5) - 65) * (2.5 / 60);
+        lon += (u.charCodeAt(4) - 65) * (5 / 60);
+        lat += (u.charCodeAt(5) - 65) * (2.5 / 60);
       }
       if (locator.length === 8) {
-        lon += parseInt(upper[6]) * (0.5 / 60);
-        lat += parseInt(upper[7]) * (0.25 / 60);
+        lon += parseInt(u[6]) * (0.5 / 60);
+        lat += parseInt(u[7]) * (0.25 / 60);
       }
-      let width, height;
-      if (locator.length === 4) {
-        width = 2;
-        height = 1;
-      } else if (locator.length === 6) {
-        width = 5 / 60;
-        height = 2.5 / 60;
-      } else if (locator.length === 8) {
-        width = 0.5 / 60;
-        height = 0.25 / 60;
-      }
-      const lat1 = lat;
-      const lat2 = lat + height;
-      const lon1 = lon;
-      const lon2 = lon + width;
-      const centerLat = (lat1 + lat2) / 2;
-      const centerLon = (lon1 + lon2) / 2;
+      const width = locator.length === 4 ? 2 : locator.length === 6 ? 5 / 60 : 0.5 / 60;
+      const height = locator.length === 4 ? 1 : locator.length === 6 ? 2.5 / 60 : 0.25 / 60;
+      const centerLat = lat + height / 2;
+      const centerLon = lon + width / 2;
       return {
         center: [centerLat, centerLon],
-        bounds: [[lat1, lon1], [lat2, lon2]]
+        bounds: [[lat, lon], [lat + height, lon + width]]
       };
     }
 
+    // Auto-initialize one row
     window.addEventListener('DOMContentLoaded', () => {
       addRow();
     });
   </script>
-  <footer style="text-align:center; font-size: 0.8rem; padding: 10px; background: #f0f0f0; color: #555;">
-    &copy; HZ1SF – Version 0.2 – Licensed under the
-    <a href="https://www.gnu.org/licenses/gpl-3.0.en.html" target="_blank" rel="noopener noreferrer">
-      GNU General Public License v3.0
-    </a>.
-  </footer>
-
 </body>
 </html>
