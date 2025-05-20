@@ -3,93 +3,65 @@
   <head>
     <title>HZ EMCOMM Locator - v0.2.4</title>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link
       href="https://fonts.googleapis.com/css2?family=Tajawal&display=swap"
       rel="stylesheet"
     />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-    <!-- Leaflet CSS for map styling -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-
     <style>
-      /* Basic reset and font */
       html,
       body {
         margin: 0;
         padding: 0;
-        font-family: sans-serif;
-      }
-
-      .arabic {
         font-family: "Tajawal", sans-serif;
+      }
+      .arabic {
         text-align: center;
         margin: 1rem 0;
         font-size: 1.8rem;
       }
-
       .arabic_th {
-        font-family: "Tajawal", sans-serif;
         text-align: center;
-        margin: 1rem 0;
         font-size: 1rem;
       }
-
       .arabic_bt {
-        font-family: "Tajawal", sans-serif;
         text-align: center;
-        margin: 1rem 0;
         font-size: 1.2rem;
       }
-
-      /* Control panel styles */
       #controls {
         padding: 10px;
         background: #f8f8f8;
       }
-
-      /* Table layout for input entries */
       table {
         width: 30%;
       }
-
       th,
       td {
         padding: 8px;
         border: 1px solid #ccc;
       }
-
-      /* Text input and color picker */
       input[type="text"],
       input[type="color"] {
         width: 100%;
         box-sizing: border-box;
         font-size: 1rem;
       }
-
       input[type="color"] {
         width: 40px;
         height: 40px;
-        padding: 0;
         border: none;
-        border-radius: 4px;
         cursor: pointer;
       }
-
-      /* Button and file input styling */
       button,
       input[type="file"] {
         padding: 8px 12px;
         margin: 4px 0;
         font-size: 1rem;
       }
-
-      /* Map container height */
       #map {
         height: calc(100vh - 420px);
       }
-
-      /* Footer styling */
       footer {
         text-align: center;
         font-size: 0.8rem;
@@ -97,20 +69,22 @@
         background: #f0f0f0;
         color: #555;
       }
-
-      /* Responsive tweaks for mobile */
       @media (max-width: 768px) {
         table {
+          width: 100%;
+        }
+        #map {
+          height: calc(100vh - 480px);
+        }
+        button,
+        input[type="file"] {
           width: 100%;
         }
       }
     </style>
   </head>
   <body>
-    <!-- Page title in Arabic -->
     <h1 class="arabic">مخطط الطوارئ</h1>
-
-    <!-- Control panel section -->
     <div id="controls">
       <table id="dataTable">
         <thead>
@@ -122,14 +96,9 @@
         </thead>
         <tbody></tbody>
       </table>
-
-      <!-- Interaction buttons -->
       <button class="arabic_bt" onclick="addRow()">+ صف جديد</button>
       <button class="arabic_bt" onclick="plot()">أضف الى الخريطة</button>
       <button class="arabic_bt" onclick="exportCSV()">CSV صدر</button>
-      <!-- <button onclick="exportPDF()">تصدير إلى PDF</button> -->
-
-      <!-- File input for importing CSV -->
       <input
         type="file"
         id="csvFile"
@@ -137,18 +106,12 @@
         onchange="importCSV(event)"
       />
       <br /><br />
-
-      <!-- Color picker -->
       <label class="arabic_bt" for="lineColor">لون الخط:</label>
       <input type="color" id="lineColor" value="#ff0000" />
     </div>
-
-    <!-- Map container -->
     <div id="map"></div>
-
-    <!-- Footer with license and version -->
     <footer>
-      &copy; HZ1SF – Version 0.2.3 – Licensed under the
+      &copy; HZ1SF – Version 0.2.4 – Licensed under the
       <a
         href="https://www.gnu.org/licenses/gpl-3.0.en.html"
         target="_blank"
@@ -158,24 +121,18 @@
       >.
     </footer>
 
-    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
-    <!-- JavaScript Application Logic -->
     <script>
-      // Initialize map centered on Saudi Arabia
       const map = L.map("map").setView([24.5, 44], 6);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "&copy; OpenStreetMap contributors",
       }).addTo(map);
 
-      // Internal state
-      let entries = []; // Plotted station data
-      let connections = []; // Line connections
-      let plottedLayers = []; // All Leaflet layers for cleanup
-      let selectedMarker = null; // Marker selected for connection
+      let entries = [];
+      let connections = [];
+      let plottedLayers = [];
+      let selectedMarker = null;
 
-      // Add a row to the table
       function addRow(name = "", grid = "") {
         const row = document.createElement("tr");
         row.innerHTML = `
@@ -185,22 +142,15 @@
         document.querySelector("#dataTable tbody").appendChild(row);
       }
 
-      // Remove row from the table
       function removeRow(button) {
-        const row = button.closest("tr");
-        row.remove();
+        button.closest("tr").remove();
       }
 
-      // Main plot function
       function plot() {
         entries = [];
         selectedMarker = null;
-
-        // Clear map
         plottedLayers.forEach((layer) => map.removeLayer(layer));
         plottedLayers = [];
-
-        const existingCenters = [];
 
         const rows = document.querySelectorAll("#dataTable tbody tr");
         for (const row of rows) {
@@ -213,17 +163,16 @@
 
           try {
             const { center, bounds } = fromMaidenhead(grid);
-
-            // Create marker and popup
             const marker = L.marker(center)
               .addTo(map)
-              .bindPopup(
-                `<b>${name}</b><br>QTH: <code>${grid}</code><br>Lat: ${center[0].toFixed(
-                  5
-                )}<br>Lon: ${center[1].toFixed(5)}`
-              );
+              .bindPopup(`<b>${name}</b><br>QTH: <code>${grid}</code>`)
+              .bindTooltip(name, {
+                permanent: true,
+                direction: "right",
+                offset: [10, 0],
+              })
+              .openTooltip();
 
-            // Clicking marker enables line drawing
             marker.on("click", () => {
               if (!selectedMarker) {
                 selectedMarker = { name, lat: center[0], lon: center[1] };
@@ -231,14 +180,15 @@
               } else {
                 if (selectedMarker.name !== name) {
                   const color = document.getElementById("lineColor").value;
-
-                  // Draw connection line
                   const line = L.polyline(
                     [
                       [selectedMarker.lat, selectedMarker.lon],
                       [center[0], center[1]],
                     ],
-                    { color, weight: 2 }
+                    {
+                      color,
+                      weight: 2,
+                    }
                   ).addTo(map);
                   plottedLayers.push(line);
                   connections.push({
@@ -247,22 +197,28 @@
                     color,
                   });
 
-                  // Bearing label
-                  const labelLat = selectedMarker.lat * 0.75 + center[0] * 0.25;
-                  const labelLon = selectedMarker.lon * 0.75 + center[1] * 0.25;
                   const bearing = getBearing(
                     selectedMarker.lat,
                     selectedMarker.lon,
                     center[0],
                     center[1]
                   );
+                  const distance = getDistance(
+                    selectedMarker.lat,
+                    selectedMarker.lon,
+                    center[0],
+                    center[1]
+                  );
+
+                  const labelLat = selectedMarker.lat * 0.75 + center[0] * 0.25;
+                  const labelLon = selectedMarker.lon * 0.75 + center[1] * 0.25;
                   const tooltip = L.tooltip({
                     permanent: true,
                     direction: "center",
                     offset: [0, 0],
                   })
                     .setLatLng([labelLat, labelLon])
-                    .setContent(`${bearing}°`)
+                    .setContent(`${bearing}° / ${distance} km`)
                     .addTo(map);
                   plottedLayers.push(tooltip);
                 }
@@ -270,36 +226,6 @@
               }
             });
 
-            // Adjust tooltip direction if close to another marker
-            let minDist = Infinity;
-            const currentPoint = map.latLngToLayerPoint(
-              L.latLng(center[0], center[1])
-            );
-            for (const other of existingCenters) {
-              const otherPoint = map.latLngToLayerPoint(
-                L.latLng(other[0], other[1])
-              );
-              const dx = currentPoint.x - otherPoint.x;
-              const dy = currentPoint.y - otherPoint.y;
-              const dist = Math.sqrt(dx * dx + dy * dy);
-              if (dist < minDist) minDist = dist;
-            }
-            existingCenters.push(center);
-
-            let direction = "right";
-            if (minDist < 40) direction = "top";
-            if (minDist < 25) direction = "left";
-            if (minDist < 15) direction = "bottom";
-
-            marker
-              .bindTooltip(name, {
-                permanent: true,
-                direction,
-                offset: [10, 0],
-              })
-              .openTooltip();
-
-            // Draw QTH grid square
             const rect = L.rectangle(bounds, {
               color: "#3388ff",
               weight: 1,
@@ -314,7 +240,6 @@
         drawConnections();
       }
 
-      // Redraw saved connections
       function drawConnections() {
         connections.forEach((c) => {
           const from = entries.find((e) => e.name === c.from);
@@ -326,26 +251,29 @@
               [from.lat, from.lon],
               [to.lat, to.lon],
             ],
-            { color: c.color || "#ff0000", weight: 2 }
+            {
+              color: c.color || "#ff0000",
+              weight: 2,
+            }
           ).addTo(map);
           plottedLayers.push(line);
 
+          const bearing = getBearing(from.lat, from.lon, to.lat, to.lon);
+          const distance = getDistance(from.lat, from.lon, to.lat, to.lon);
           const labelLat = from.lat * 0.75 + to.lat * 0.25;
           const labelLon = from.lon * 0.75 + to.lon * 0.25;
-          const bearing = getBearing(from.lat, from.lon, to.lat, to.lon);
           const tooltip = L.tooltip({
             permanent: true,
             direction: "center",
             offset: [0, 0],
           })
             .setLatLng([labelLat, labelLon])
-            .setContent(`${bearing}°`)
+            .setContent(`${bearing}° / ${distance} km`)
             .addTo(map);
           plottedLayers.push(tooltip);
         });
       }
 
-      // Bearing calculator
       function getBearing(lat1, lon1, lat2, lon2) {
         const toRad = (deg) => (deg * Math.PI) / 180;
         const toDeg = (rad) => (rad * 180) / Math.PI;
@@ -357,12 +285,21 @@
         return Math.round((toDeg(Math.atan2(y, x)) + 360) % 360);
       }
 
-      // CSV Export
+      function getDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; // Earth radius in km
+        const dLat = ((lat2 - lat1) * Math.PI) / 180;
+        const dLon = ((lon2 - lon1) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos((lat1 * Math.PI) / 180) *
+            Math.cos((lat2 * Math.PI) / 180) *
+            Math.sin(dLon / 2) ** 2;
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return Math.round(R * c);
+      }
+
       function exportCSV() {
-        if (entries.length === 0) {
-          alert("No entries to export.");
-          return;
-        }
+        if (entries.length === 0) return alert("No entries to export.");
         const now = new Date();
         const pad = (n) => String(n).padStart(2, "0");
         const filename = `${pad(now.getDate())}-${pad(
@@ -386,7 +323,6 @@
         a.click();
       }
 
-      // CSV Import
       function importCSV(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -417,9 +353,7 @@
               const [from, to, color] = lines[j]
                 .split(",")
                 .map((s) => s.trim());
-              if (from && to && color) {
-                connections.push({ from, to, color });
-              }
+              if (from && to && color) connections.push({ from, to, color });
             }
           }
 
@@ -428,7 +362,6 @@
         reader.readAsText(file);
       }
 
-      // Convert Maidenhead locator to lat/lon + grid bounds
       function fromMaidenhead(locator) {
         if (![4, 6, 8].includes(locator.length))
           throw new Error("Locator must be 4, 6, or 8 characters long");
@@ -466,7 +399,6 @@
         };
       }
 
-      // Auto-initialize one row
       window.addEventListener("DOMContentLoaded", () => {
         addRow();
       });
